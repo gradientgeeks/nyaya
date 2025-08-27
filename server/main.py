@@ -37,6 +37,12 @@ from src.api import (
     system
 )
 
+try:
+    from src.api import document_query
+    DOCUMENT_QUERY_AVAILABLE = True
+except ImportError:
+    DOCUMENT_QUERY_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -101,6 +107,10 @@ async def startup_event():
         predictions.set_prediction_module(prediction_module)
         conversations.set_conversation_manager(conversation_manager)
         
+        # Set document_query components if available
+        if DOCUMENT_QUERY_AVAILABLE:
+            document_query.set_components(orchestrator, conversation_manager)
+        
         logger.info("System initialization completed successfully!")
         
     except Exception as e:
@@ -120,6 +130,10 @@ app.include_router(classification.router)
 app.include_router(predictions.router)
 app.include_router(conversations.router)
 app.include_router(system.router)
+
+# Include document_query router if available
+if DOCUMENT_QUERY_AVAILABLE:
+    app.include_router(document_query.router)
 
 # Error handlers
 @app.exception_handler(HTTPException)
