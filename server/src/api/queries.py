@@ -3,7 +3,7 @@ Query endpoints for legal document analysis
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 

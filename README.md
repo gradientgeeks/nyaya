@@ -260,6 +260,16 @@ Based on precedents:
     url = "https://aclanthology.org/2025.coling-main.738/",
     pages = "11135--11160",
     abstract = "The integration of artificial intelligence (AI) in legal judgment prediction (LJP) has the potential to transform the legal landscape, particularly in jurisdictions like India, where a significant backlog of cases burdens the legal system. This paper introduces NyayaAnumana, the largest and most diverse corpus of Indian legal cases compiled for LJP, encompassing a total of 7,02,945 preprocessed cases. NyayaAnumana, which combines the words {\textquotedblleft}Nyaya{\textquotedblright} and {\textquotedblleft}Anumana{\textquotedblright} that means {\textquotedblleft}judgment{\textquotedblright} and {\textquotedblleft}inference{\textquotedblright} respectively for most major Indian languages, includes a wide range of cases from the Supreme Court, High Courts, Tribunal Courts, District Courts, and Daily Orders and, thus, provides unparalleled diversity and coverage. Our dataset surpasses existing datasets like PredEx and ILDC, offering a comprehensive foundation for advanced AI research in the legal domain. In addition to the dataset, we present INLegalLlama, a domain-specific generative large language model (LLM) tailored to the intricacies of the Indian legal system. It is developed through a two-phase training approach over a base LLaMa model. First, Indian legal documents are injected using continual pretraining. Second, task-specific supervised finetuning is done. This method allows the model to achieve a deeper understanding of legal contexts. Our experiments demonstrate that incorporating diverse court data significantly boosts model accuracy, achieving approximately 90{\%} F1-score in prediction tasks. INLegalLlama not only improves prediction accuracy but also offers comprehensible explanations, addressing the need for explainability in AI-assisted legal decisions."
+
+
+
+}
+  @inproceedings{paul-2022-pretraining,
+  url = {https://arxiv.org/abs/2209.06049},
+  author = {Paul, Shounak and Mandal, Arpan and Goyal, Pawan and Ghosh, Saptarshi},
+  title = {Pre-trained Language Models for the Legal Domain: A Case Study on Indian Law},
+  booktitle = {Proceedings of 19th International Conference on Artificial Intelligence and Law - ICAIL 2023}
+  year = {2023},
 }
 
 
