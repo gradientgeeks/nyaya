@@ -19,7 +19,7 @@ class QueryRequest(BaseModel):
     query: str = Field(..., description="Legal query text")
     session_id: Optional[str] = Field(None, description="Conversation session ID")
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context")
-    role_filter: Optional[list[str]] = Field(None, description="Filter by specific rhetorical roles")
+    role_filter: Optional[List[str]] = Field(None, description="Filter by specific rhetorical roles")
 
 class QueryResponse(BaseModel):
     """Response model for legal queries"""
