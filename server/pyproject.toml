@@ -249,4 +249,5 @@ dependencies = [
     "zstandard==0.24.0",
     "fitz>=0.0.1.dev2",
     "langchain-chroma>=0.2.5",
+    "seaborn>=0.13.2",
 ]
