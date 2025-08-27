@@ -3,7 +3,7 @@ Role classification endpoints
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,7 @@ class RoleClassificationRequest(BaseModel):
 
 class RoleClassificationResponse(BaseModel):
     """Response for rhetorical role classification"""
-    sentences: list[Dict[str, Any]] = Field(..., description="Classified sentences with roles")
+    sentences: List[Dict[str, Any]] = Field(..., description="Classified sentences with roles")
     statistics: Dict[str, int] = Field(..., description="Role distribution statistics")
 
 # Global role classifier (will be set by main.py)

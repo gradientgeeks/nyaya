@@ -26,9 +26,9 @@ class QueryResponse(BaseModel):
     answer: str = Field(..., description="Generated answer")
     session_id: str = Field(..., description="Conversation session ID")
     confidence: Optional[float] = Field(None, description="Response confidence score")
-    sources: Optional[list[Dict[str, Any]]] = Field(None, description="Source documents")
+    sources: Optional[List[Dict[str, Any]]] = Field(None, description="Source documents")
     classification: Optional[Dict[str, Any]] = Field(None, description="Query classification")
-    tools_used: Optional[list[str]] = Field(None, description="Tools used for processing")
+    tools_used: Optional[List[str]] = Field(None, description="Tools used for processing")
 
 # Global orchestrator (will be set by main.py)
 orchestrator: Optional[AgentOrchestrator] = None

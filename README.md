@@ -1,4 +1,4 @@
-# Intelligent Agent for Legal Document Analysis using RAG, Role Classifier, and Multi-turn Conversation Support
+# Intelligent Agent for Legal Document Analysis using RAG & Role Classifier
 
 ---
 

@@ -3,7 +3,7 @@ Prediction endpoints for judgment outcomes
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
@@ -26,8 +26,8 @@ class PredictionResponse(BaseModel):
     predicted_outcome: str = Field(..., description="Predicted judgment outcome")
     confidence: float = Field(..., description="Prediction confidence")
     probability_distribution: Dict[str, float] = Field(..., description="Outcome probabilities")
-    similar_cases: list[Dict[str, Any]] = Field(..., description="Similar precedent cases")
-    key_factors: list[str] = Field(..., description="Key influencing factors")
+    similar_cases: List[Dict[str, Any]] = Field(..., description="Similar precedent cases")
+    key_factors: List[str] = Field(..., description="Key influencing factors")
     reasoning: str = Field(..., description="Prediction reasoning")
     disclaimer: str = Field(..., description="Legal disclaimer")
 
