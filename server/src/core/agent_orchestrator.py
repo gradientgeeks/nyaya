@@ -470,6 +470,10 @@ class AgentOrchestrator:
             tools_used.append("prediction_module")
             return self._handle_prediction_request(query, classification, context)
         
+        elif context.get("immediate_document_query") or context.get("followup_query"):
+            tools_used.append("document_specific_rag")
+            return self._handle_document_specific_query(query, classification, context)
+        
         else:
             # Default to general legal research
             tools_used.append("general_rag")
@@ -694,6 +698,67 @@ class AgentOrchestrator:
         
         return legal_terms[:10]  # Limit to top 10 terms
     
+    def _handle_document_specific_query(self, query: str, classification: QueryClassification, 
+                                      context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle queries specific to an uploaded document"""
+        try:
+            document_id = context.get("document_id")
+            filename = context.get("filename", "uploaded document")
+            role_filter = context.get("role_filter")
+            
+            # If we have role filter from context, use it; otherwise use detected roles
+            target_roles = role_filter if role_filter else classification.relevant_roles
+            
+            # Query the document with specific focus if we have document context
+            if document_id:
+                # Enhanced query with document context
+                enhanced_query = f"""
+                Query about document '{filename}': {query}
+                
+                Please provide specific information from this document.
+                """
+                
+                response = self.rag_system.query_legal_rag(
+                    enhanced_query,
+                    auto_detect_roles=not bool(target_roles),
+                    specific_roles=target_roles,
+                    k=8
+                )
+            else:
+                # Fallback to general document query
+                response = self.rag_system.query_legal_rag(
+                    query,
+                    auto_detect_roles=not bool(target_roles),
+                    specific_roles=target_roles,
+                    k=8
+                )
+            
+            # Add document context to the response
+            if context.get("immediate_document_query"):
+                response["answer"] = f"Based on the document '{filename}' you just uploaded:\n\n{response['answer']}"
+            elif context.get("followup_query"):
+                response["answer"] = f"Continuing analysis of '{filename}':\n\n{response['answer']}"
+            
+            # Add metadata about document-specific processing
+            response.update({
+                "document_specific": True,
+                "document_id": document_id,
+                "filename": filename,
+                "roles_queried": target_roles or classification.relevant_roles,
+                "tools_used": ["document_specific_rag", "role_classifier", "legal_rag"]
+            })
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in document-specific query: {e}")
+            return {
+                "answer": f"I encountered an error while analyzing the document. Please try rephrasing your question or upload the document again. Error: {str(e)}",
+                "error": str(e),
+                "document_specific": True,
+                "tools_used": ["error_handler"]
+            }
+    
     def _format_case_summary(self, summary: Dict[str, Any]) -> str:
         """Format case summary for presentation"""
         formatted = "## Case Summary\n\n"
@@ -750,9 +815,14 @@ class AgentOrchestrator:
                 # Generate summary
                 summary = self.rag_system.get_case_summary(processed_doc.content)
                 
+                # Generate document ID for reference
+                import uuid
+                document_id = str(uuid.uuid4())
+                
                 result = {
                     "success": True,
                     "document_processed": True,
+                    "document_id": document_id,
                     "filename": filename,
                     "metadata": processed_doc.metadata.dict(),
                     "summary": self._format_case_summary(summary),
