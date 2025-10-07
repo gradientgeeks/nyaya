@@ -5,7 +5,7 @@ Training Script for Legal Document Role Classification Model
 This script trains the rhetorical role classifier using the existing dataset
 and saves the model in the models folder.
 """
-
+ 
 import os
 import sys
 from pathlib import Path
