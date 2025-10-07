@@ -25,7 +25,10 @@ import seaborn as sns
 # Import our custom modules
 from data_loader import create_data_loaders, LegalDocumentDataset
 import sys
-sys.path.append('../')
+# Fix import paths
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 from role_classifier import InLegalBERTClassifier, BiLSTMCRFClassifier, RhetoricalRole
 
 # Setup logging
@@ -105,7 +108,8 @@ class RoleClassifierTrainer:
               warmup_steps: int = 500,
               max_length: int = 512,
               save_best_model: bool = True,
-              evaluation_strategy: str = "epoch"):
+              evaluation_strategy: str = "epoch",
+              dataset_sample_ratio: float = 1.0):
         """
         Train the model
         
@@ -133,7 +137,8 @@ class RoleClassifierTrainer:
             tokenizer_name=self.model_name,
             context_mode=context_mode,
             batch_size=batch_size,
-            max_length=max_length
+            max_length=max_length,
+            dataset_sample_ratio=dataset_sample_ratio
         )
         
         train_loader = data_loaders['train']
