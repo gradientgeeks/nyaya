@@ -5,10 +5,11 @@ description = "Legal Document Analysis Server with Role Classification and Multi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "chromadb==1.0.20",
+    "pinecone[grpc]==5.0.0",
     "langchain==0.3.27",
     "langchain-community==0.3.28",
     "langchain-google-vertexai==2.0.28",
+    "langchain-pinecone==0.3.0",
     "lxml==6.0.1",
     "matplotlib==3.10.5",
     "pillow==11.3.0",
@@ -248,6 +249,5 @@ dependencies = [
     "zipp==3.23.0",
     "zstandard==0.24.0",
     "fitz>=0.0.1.dev2",
-    "langchain-chroma>=0.2.5",
     "seaborn>=0.13.2",
 ]

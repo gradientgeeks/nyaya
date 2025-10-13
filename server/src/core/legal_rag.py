@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.storage import InMemoryStore
-from langchain_chroma import Chroma
+from langchain_pinecone import PineconeVectorStore
 from langchain_community.embeddings import VertexAIEmbeddings
 from langchain_core.documents import Document
 from langchain.prompts import PromptTemplate
@@ -28,7 +28,14 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
+from pinecone import Pinecone
+import os
+from dotenv import load_dotenv
+
 from ..models.role_classifier import RoleClassifier, RhetoricalRole
+from ..config.pinecone_setup import PineconeIndexManager
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -47,59 +54,138 @@ class LegalRAGSystem:
     Integrates rhetorical role classification with multi-modal retrieval
     """
     
-    def __init__(self, 
+    def __init__(self,
                  embedding_model: str = "text-embedding-005",
                  role_classifier_type: str = "inlegalbert",
-                 collection_name: str = "legal_rag",
-                 device: str = "cpu"):
+                 base_index_name: str = None,
+                 device: str = "cpu",
+                 lazy_init: bool = True):
         """
-        Initialize the Legal RAG System
-        
+        Initialize the Legal RAG System with Pinecone
+
         Args:
             embedding_model: Name of the embedding model
             role_classifier_type: Type of role classifier to use
-            collection_name: Name for the ChromaDB collection
+            base_index_name: Base name for Pinecone indexes (defaults to env var)
             device: Device for running models
+            lazy_init: If True, create Pinecone indexes lazily (on first use)
         """
         self.device = device
-        self.collection_name = collection_name
-        
+        self.lazy_init = lazy_init
+
+        # Initialize Pinecone index manager
+        self.pinecone_manager = PineconeIndexManager(base_index_name=base_index_name)
+
         # Initialize role classifier
         self.role_classifier = RoleClassifier(
-            model_type=role_classifier_type, 
+            model_type=role_classifier_type,
             device=device
         )
-        
+
         # Initialize embeddings
         self.embeddings = VertexAIEmbeddings(model_name=embedding_model)
-        
-        # Initialize vector store
-        self.vectorstore = Chroma(
-            collection_name=collection_name,
-            embedding_function=self.embeddings
-        )
-        
-        # Initialize storage and retriever
+
+        # Initialize Pinecone client
+        self.pc = Pinecone(api_key=self.pinecone_manager.api_key)
+
+        # Initialize role-specific vector stores (lazy or immediate)
+        self.role_vectorstores = {}
+        if not lazy_init:
+            self._initialize_all_vectorstores()
+
+        # Initialize storage for document retrieval
         self.docstore = InMemoryStore()
-        self.retriever = None
-        self._setup_retriever()
-        
+
+        # Initialize role-specific retrievers
+        self.role_retrievers = {}
+
         # Initialize LLM for generation
         self.llm = ChatVertexAI(
-            temperature=0, 
-            model_name="gemini-2.5-flash", 
+            temperature=0,
+            model_name="gemini-2.5-flash",
             max_tokens=1024
         )
-        
-        logger.info("Legal RAG System initialized successfully")
-    
-    def _setup_retriever(self):
-        """Setup the multi-vector retriever with role awareness"""
-        self.retriever = MultiVectorRetriever(
-            vectorstore=self.vectorstore,
+
+        logger.info(f"Legal RAG System initialized with Pinecone (lazy_init={lazy_init})")
+        logger.info(f"Role indexes: {list(self.pinecone_manager.role_indexes.values())}")
+
+    def _initialize_all_vectorstores(self):
+        """Initialize vectorstores for all roles immediately"""
+        for role in self.pinecone_manager.RHETORICAL_ROLES:
+            self._get_or_create_vectorstore(role)
+        logger.info(f"Initialized vectorstores for {len(self.role_vectorstores)} roles")
+
+    def _get_or_create_vectorstore(self, role: str) -> PineconeVectorStore:
+        """
+        Get or create vectorstore for a specific role (lazy initialization)
+
+        Args:
+            role: Rhetorical role name
+
+        Returns:
+            PineconeVectorStore for the role
+        """
+        # Normalize role name to match Pinecone index naming
+        role_key = role.lower().replace(" ", "_").replace("of_", "")
+
+        if role_key in self.role_vectorstores:
+            return self.role_vectorstores[role_key]
+
+        # Get index name for this role
+        if role_key not in self.pinecone_manager.role_indexes:
+            # Try to find matching role
+            for r in self.pinecone_manager.RHETORICAL_ROLES:
+                if r in role.lower():
+                    role_key = r
+                    break
+
+        if role_key not in self.pinecone_manager.role_indexes:
+            logger.warning(f"No index found for role: {role}, using 'main'")
+            role_key = "main"
+
+        index_name = self.pinecone_manager.role_indexes[role_key]
+
+        # Ensure index exists
+        if not self.pinecone_manager.index_exists(index_name):
+            logger.info(f"Creating Pinecone index for role '{role_key}': {index_name}")
+            self.pinecone_manager.create_index(index_name, dimension=768)
+
+        # Create vectorstore for this role
+        vectorstore = PineconeVectorStore(
+            index_name=index_name,
+            embedding=self.embeddings
+        )
+
+        self.role_vectorstores[role_key] = vectorstore
+        logger.info(f"Created vectorstore for role '{role_key}': {index_name}")
+
+        return vectorstore
+
+    def _get_or_create_retriever(self, role: str) -> MultiVectorRetriever:
+        """
+        Get or create retriever for a specific role
+
+        Args:
+            role: Rhetorical role
+
+        Returns:
+            MultiVectorRetriever for the role
+        """
+        role_key = role.lower().replace(" ", "_").replace("of_", "")
+
+        if role_key in self.role_retrievers:
+            return self.role_retrievers[role_key]
+
+        vectorstore = self._get_or_create_vectorstore(role)
+
+        retriever = MultiVectorRetriever(
+            vectorstore=vectorstore,
             docstore=self.docstore,
             id_key="doc_id"
         )
+
+        self.role_retrievers[role_key] = retriever
+        return retriever
     
     def process_legal_document(self, 
                              document_text: str, 
@@ -148,84 +234,122 @@ class LegalRAGSystem:
     
     def add_documents_to_store(self, tagged_docs: List[RoleTaggedDocument]):
         """
-        Add role-tagged documents to the vector store
-        
+        Add role-tagged documents to role-specific Pinecone indexes
+
         Args:
             tagged_docs: List of role-tagged documents
         """
-        # Group documents by role for better organization
+        # Group documents by role
         role_groups = {}
         for doc in tagged_docs:
-            if doc.role not in role_groups:
-                role_groups[doc.role] = []
-            role_groups[doc.role].append(doc)
-        
-        # Add documents to vectorstore and docstore
-        for role, docs in role_groups.items():
-            doc_ids = [doc.doc_id for doc in docs]
-            contents = [doc.content for doc in docs]
-            metadatas = [doc.metadata for doc in docs]
-            
-            # Create Document objects with metadata
-            documents = [
-                Document(
-                    page_content=content,
-                    metadata={**metadata, "doc_id": doc_id}
-                )
-                for content, metadata, doc_id in zip(contents, metadatas, doc_ids)
-            ]
-            
-            # Add to vectorstore
-            self.retriever.vectorstore.add_documents(documents)
-            
-            # Add to docstore
-            self.retriever.docstore.mset(list(zip(doc_ids, contents)))
-        
-        logger.info(f"Added {len(tagged_docs)} documents to store across {len(role_groups)} roles")
+            role_key = doc.role.lower().replace(" ", "_").replace("of_", "")
+            if role_key not in role_groups:
+                role_groups[role_key] = []
+            role_groups[role_key].append(doc)
+
+        # Add documents to role-specific vectorstores
+        for role_key, docs in role_groups.items():
+            try:
+                # Get or create vectorstore for this role
+                vectorstore = self._get_or_create_vectorstore(role_key)
+
+                doc_ids = [doc.doc_id for doc in docs]
+                contents = [doc.content for doc in docs]
+                metadatas = [doc.metadata for doc in docs]
+
+                # Create Document objects with metadata including case_id
+                documents = [
+                    Document(
+                        page_content=content,
+                        metadata={
+                            **metadata,
+                            "doc_id": doc_id,
+                            "role": role_key,
+                            "case_id": metadata.get("case_id", metadata.get("filename", "unknown"))
+                        }
+                    )
+                    for content, metadata, doc_id in zip(contents, metadatas, doc_ids)
+                ]
+
+                # Add to role-specific Pinecone index
+                vectorstore.add_documents(documents)
+                logger.info(f"Added {len(documents)} documents to role '{role_key}' index")
+
+                # Add to shared docstore for retrieval
+                self.docstore.mset(list(zip(doc_ids, contents)))
+
+            except Exception as e:
+                logger.error(f"Failed to add documents to role '{role_key}': {e}")
+                raise
+
+        logger.info(f"Added {len(tagged_docs)} documents across {len(role_groups)} role indexes")
     
-    def retrieve_by_role(self, 
-                        query: str, 
-                        roles: List[str] = None, 
-                        k: int = 5) -> List[Document]:
+    def retrieve_by_role(self,
+                        query: str,
+                        roles: List[str] = None,
+                        k: int = 5,
+                        case_id: str = None) -> List[Document]:
         """
-        Retrieve documents filtered by specific rhetorical roles
-        
+        Retrieve documents from role-specific Pinecone indexes
+
         Args:
             query: Search query
             roles: List of rhetorical roles to filter by
-            k: Number of documents to retrieve
-            
+            k: Number of documents to retrieve per role
+            case_id: Optional case ID to filter by specific case
+
         Returns:
             List of retrieved documents
         """
-        if roles is None:
-            # If no roles specified, search all
-            return self.retriever.invoke(query, k=k)
-        
-        # Create role-specific filter
-        role_filter = {"role": {"$in": roles}}
-        
-        # Perform similarity search with metadata filter
-        docs = self.vectorstore.similarity_search(
-            query, 
-            k=k, 
-            filter=role_filter
-        )
-        
-        # Get full content from docstore
-        doc_ids = [doc.metadata.get("doc_id") for doc in docs if doc.metadata.get("doc_id")]
-        full_contents = self.retriever.docstore.mget(doc_ids)
-        
-        # Reconstruct documents with full content
-        result_docs = []
-        for doc, content in zip(docs, full_contents):
-            if content:
-                result_docs.append(Document(
-                    page_content=content,
-                    metadata=doc.metadata
-                ))
-        
-        return result_docs
+        if roles is None or len(roles) == 0:
+            # If no roles specified, search across key roles
+            roles = [
+                RhetoricalRole.FACTS.value,
+                RhetoricalRole.REASONING.value,
+                RhetoricalRole.DECISION.value
+            ]
+
+        all_docs = []
+
+        for role in roles:
+            try:
+                # Normalize role name
+                role_key = role.lower().replace(" ", "_").replace("of_", "")
+
+                # Get vectorstore for this role
+                vectorstore = self._get_or_create_vectorstore(role_key)
+
+                # Build filter for case_id if specified
+                search_kwargs = {"k": k}
+                if case_id:
+                    search_kwargs["filter"] = {"case_id": case_id}
+
+                # Perform similarity search in role-specific index
+                docs = vectorstore.similarity_search(
+                    query,
+                    **search_kwargs
+                )
+
+                # Get full content from docstore
+                doc_ids = [doc.metadata.get("doc_id") for doc in docs if doc.metadata.get("doc_id")]
+                full_contents = self.docstore.mget(doc_ids)
+
+                # Reconstruct documents with full content
+                for doc, content in zip(docs, full_contents):
+                    if content:
+                        all_docs.append(Document(
+                            page_content=content,
+                            metadata={**doc.metadata, "retrieved_from_role": role_key}
+                        ))
+
+                logger.info(f"Retrieved {len(docs)} documents from role '{role_key}'")
+
+            except Exception as e:
+                logger.error(f"Failed to retrieve from role '{role}': {e}")
+                continue
+
+        logger.info(f"Total retrieved: {len(all_docs)} documents across {len(roles)} roles")
+        return all_docs
     
     def analyze_query_intent(self, query: str) -> List[str]:
         """

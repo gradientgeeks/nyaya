@@ -2,7 +2,10 @@
 Vector Database Configuration for Legal Document Analysis System
 
 This module provides configuration and setup utilities for vector databases
-including ChromaDB and FAISS with role-aware metadata storage.
+including Pinecone and FAISS with role-aware metadata storage.
+
+NOTE: This is an alternative/backup configuration system.
+The primary system uses legal_rag.py with Pinecone role-based indexes.
 """
 
 import os
@@ -11,37 +14,48 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-import chromadb
-from chromadb.config import Settings
+from pinecone import Pinecone, ServerlessSpec
 import faiss
 import numpy as np
 import pickle
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class VectorDBConfig:
-    """Configuration for vector database systems"""
-    
+    """
+    Configuration for vector database systems
+
+    DEPRECATED: This class is maintained for backward compatibility.
+    For new implementations, use pinecone_setup.PineconeIndexManager
+    and legal_rag.LegalRAGSystem which provide role-based Pinecone indexes.
+    """
+
     def __init__(self, data_dir: str = "data/vector_db"):
         """
         Initialize vector database configuration
-        
+
         Args:
             data_dir: Directory for storing vector database files
         """
+        logger.warning("VectorDBConfig is deprecated. Use pinecone_setup.PineconeIndexManager instead.")
+
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        
-        # ChromaDB configuration
-        self.chroma_config = {
-            "persist_directory": str(self.data_dir / "chroma"),
-            "collection_name": "legal_documents",
+
+        # Pinecone configuration (replaces ChromaDB)
+        self.pinecone_config = {
+            "api_key": os.getenv("PINECONE_API_KEY"),
+            "index_name": os.getenv("PINECONE_INDEX_NAME", "nyaya-legal-rag"),
+            "environment": os.getenv("PINECONE_ENVIRONMENT", "us-east-1"),
             "embedding_dimension": 768,  # For Google Vertex AI embeddings
             "metadata_schema": self._get_metadata_schema()
         }
-        
-        # FAISS configuration
+
+        # FAISS configuration (unchanged)
         self.faiss_config = {
             "index_path": str(self.data_dir / "faiss"),
             "index_type": "IVF",  # Inverted File Index
@@ -49,7 +63,7 @@ class VectorDBConfig:
             "embedding_dimension": 768,
             "metric": "METRIC_INNER_PRODUCT"
         }
-        
+
         # Role-specific configurations
         self.role_configs = self._setup_role_configurations()
     
@@ -129,7 +143,10 @@ class VectorDBConfig:
         }
         return thresholds.get(role, 0.7)
 
-class ChromaDBManager:
+# ChromaDBManager is deprecated and removed.
+# Use pinecone_setup.PineconeIndexManager and legal_rag.LegalRAGSystem instead.
+
+class _DeprecatedChromaDBManager:
     """Manager for ChromaDB vector database operations"""
     
     def __init__(self, config: VectorDBConfig):
