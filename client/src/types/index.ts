@@ -4,6 +4,8 @@ export interface LegalDocument {
   type?: 'judged' | 'pending';
   uploadDate?: Date;
   size?: number;
+  sessionId?: string;
+  documentId?: string;
 }
 
 export interface CaseSummary {

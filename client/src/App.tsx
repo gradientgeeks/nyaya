@@ -11,24 +11,22 @@ import {
   ChatInput,
   ThemeToggle
 } from './components';
-import { mockCases } from './data/mockData';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { uploadDocumentAndAsk, askFollowUpQuestion, getErrorMessage } from './services/api';
 
 function AppContent() {
-  const [documents, setDocuments] = useState<LegalDocument[]>([
-    { id: 1, name: "Case_A_vs_B_2023.pdf" },
-    { id: 2, name: "Case_C_vs_D_Pending.pdf" },
-  ]);
-  const [activeDocument, setActiveDocument] = useState<LegalDocument | null>(documents[0]);
+  const [documents, setDocuments] = useState<LegalDocument[]>([]);
+  const [activeDocument, setActiveDocument] = useState<LegalDocument | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Set initial greeting message when active document changes
-    if (activeDocument) {
+    if (activeDocument && !pendingUpload) {
       setMessages([{
         id: `greeting-${activeDocument.id}`,
         sender: 'bot',
@@ -37,15 +35,15 @@ function AppContent() {
         timestamp: new Date()
       }]);
     }
-  }, [activeDocument]);
+  }, [activeDocument, pendingUpload]);
 
   useEffect(() => {
     // Auto-scroll to the latest message
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (input.trim() === '' || isLoading || !activeDocument) return;
+  const handleSendMessage = async () => {
+    if (input.trim() === '' || isLoading) return;
 
     const userMessage: ChatMessageType = { 
       id: `user-${Date.now()}`,
@@ -54,109 +52,101 @@ function AppContent() {
       timestamp: new Date()
     };
     
+    const currentInput = input;
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
-    // Simulate API call and agent response
-    setTimeout(() => {
-      const docData = mockCases[activeDocument.name];
-      let botResponse: ChatMessageType;
+    try {
+      // If there's a pending upload, upload the file with the query
+      if (pendingUpload) {
+        const response = await uploadDocumentAndAsk(
+          pendingUpload,
+          currentInput,
+          undefined,
+          undefined
+        );
 
-      const lowerInput = input.toLowerCase();
+        // Create the document record
+        const newDoc: LegalDocument = {
+          id: documents.length + 1,
+          name: response.filename,
+          uploadDate: new Date(),
+          size: pendingUpload.size,
+          sessionId: response.session_id,
+          documentId: response.document_id,
+        };
 
-      if (lowerInput.includes("summary")) {
-        botResponse = { 
+        setDocuments(prev => [...prev, newDoc]);
+        setActiveDocument(newDoc);
+        setPendingUpload(null);
+
+        const botResponse: ChatMessageType = {
           id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: docData.summary,
+          sender: 'bot',
+          type: 'text',
+          text: response.answer,
           timestamp: new Date()
         };
-      } else if (lowerInput.includes("fact")) {
-        botResponse = { 
+
+        setMessages(prev => [...prev, botResponse]);
+      } 
+      // If there's an active document with a session, send follow-up
+      else if (activeDocument?.sessionId) {
+        const response = await askFollowUpQuestion(
+          currentInput,
+          activeDocument.sessionId,
+          undefined
+        );
+
+        const botResponse: ChatMessageType = {
           id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { facts: docData.summary.facts },
+          sender: 'bot',
+          type: 'text',
+          text: response.answer,
           timestamp: new Date()
         };
-      } else if (lowerInput.includes("petitioner") || lowerInput.includes("aop")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { petitionerArgs: docData.summary.petitionerArgs },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("respondent") || lowerInput.includes("aor")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { respondentArgs: docData.summary.respondentArgs },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("reasoning")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { reasoning: docData.summary.reasoning },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("decision")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { decision: docData.summary.decision },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("predict") || lowerInput.includes("outcome")) {
-        if (docData.type === 'pending' && docData.prediction) {
-          botResponse = { 
-            id: `bot-${Date.now()}`,
-            sender: 'bot', 
-            type: 'prediction', 
-            data: docData.prediction,
-            timestamp: new Date()
-          };
-        } else {
-          botResponse = { 
-            id: `bot-${Date.now()}`,
-            sender: 'bot', 
-            type: 'text', 
-            text: "This case has already been judged. I can provide the final decision and reasoning.",
-            timestamp: new Date()
-          };
-        }
-      } else {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'text', 
-          text: "I'm not sure how to respond to that. You can ask me to summarize the case, show specific parts like 'facts' or 'arguments', or 'predict the outcome' for pending cases.",
-          timestamp: new Date()
-        };
+
+        setMessages(prev => [...prev, botResponse]);
       }
-      
-      setMessages(prev => [...prev, botResponse]);
+      // No document selected
+      else {
+        const botResponse: ChatMessageType = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          type: 'text',
+          text: 'Please upload a document first to start a conversation.',
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, botResponse]);
+      }
+    } catch (error) {
+      console.error('Error processing query:', error);
+      const errorMessage: ChatMessageType = {
+        id: `error-${Date.now()}`,
+        sender: 'bot',
+        type: 'text',
+        text: `Error: ${getErrorMessage(error)}`,
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleFileUpload = (file: File) => {
-    const newDoc: LegalDocument = { 
-      id: documents.length + 1, 
-      name: file.name,
-      uploadDate: new Date(),
-      size: file.size
-    };
-    setDocuments(prev => [...prev, newDoc]);
-    setActiveDocument(newDoc);
-    // Add a mock entry for the new file
-    (mockCases as any)[file.name] = mockCases["Case_C_vs_D_Pending.pdf"]; // Use a default mock
+    // Set the pending upload and prompt user to ask a question
+    setPendingUpload(file);
+    setMessages([{
+      id: `upload-prompt-${Date.now()}`,
+      sender: 'bot',
+      type: 'greeting',
+      text: `📄 **${file.name}** is ready for upload. Please ask a question about this document, and I'll process it for you.`,
+      timestamp: new Date()
+    }]);
   };
 
   const handleDocumentSelect = (document: LegalDocument) => {
