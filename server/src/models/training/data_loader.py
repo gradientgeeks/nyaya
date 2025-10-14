@@ -33,7 +33,8 @@ class LegalDocumentDataset(Dataset):
                  tokenizer_name: str = "law-ai/InLegalBERT",
                  context_mode: str = "single",
                  max_length: int = 512,
-                 test_split: bool = False):
+                 test_split: bool = False,
+                 dataset_sample_ratio: float = 1.0):
         """
         Initialize the dataset
         
@@ -43,11 +44,13 @@ class LegalDocumentDataset(Dataset):
             context_mode: Context mode for training ("single", "prev", "prev_two", "surrounding")
             max_length: Maximum sequence length
             test_split: Whether this is test split (affects processing)
+            dataset_sample_ratio: Ratio of dataset to use (0.0-1.0), randomly samples files
         """
         self.data_path = Path(data_path)
         self.context_mode = context_mode
         self.max_length = max_length
         self.test_split = test_split
+        self.dataset_sample_ratio = dataset_sample_ratio
         
         # Initialize tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
@@ -131,8 +134,20 @@ class LegalDocumentDataset(Dataset):
         """Load data from directory containing multiple text files"""
         data = []
         
-        # Get all text files
-        txt_files = list(dir_path.glob("*.txt"))
+        # Get all text files recursively (handles nested directories like val/val/)
+        txt_files = list(dir_path.rglob("*.txt"))
+        
+        if len(txt_files) == 0:
+            logger.warning(f"No .txt files found in {dir_path}")
+            return data
+        
+        # Apply dataset sampling if ratio < 1.0
+        if self.dataset_sample_ratio < 1.0 and not self.test_split:
+            import random
+            num_files_to_use = int(len(txt_files) * self.dataset_sample_ratio)
+            random.seed(42)  # For reproducibility
+            txt_files = random.sample(txt_files, num_files_to_use)
+            logger.info(f"Sampling {num_files_to_use}/{len(list(dir_path.rglob('*.txt')))} files ({self.dataset_sample_ratio*100}% of dataset)")
         
         for file_path in txt_files:
             try:
@@ -295,7 +310,8 @@ def create_data_loaders(
     context_mode: str = "prev",
     batch_size: int = 16,
     max_length: int = 512,
-    train_split_ratio: float = 0.8
+    train_split_ratio: float = 0.8,
+    dataset_sample_ratio: float = 1.0
 ) -> Dict[str, DataLoader]:
     """
     Create data loaders for training, validation, and testing
@@ -309,6 +325,7 @@ def create_data_loaders(
         batch_size: Batch size
         max_length: Maximum sequence length
         train_split_ratio: Ratio for train/val split if val_path not provided
+        dataset_sample_ratio: Ratio of dataset files to use (0.0-1.0)
     
     Returns:
         Dictionary containing data loaders
@@ -317,7 +334,8 @@ def create_data_loaders(
     
     # Load training dataset
     train_dataset = LegalDocumentDataset(
-        train_path, tokenizer_name, context_mode, max_length
+        train_path, tokenizer_name, context_mode, max_length,
+        dataset_sample_ratio=dataset_sample_ratio
     )
     
     # Split train/val if validation path not provided

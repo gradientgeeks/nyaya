@@ -101,8 +101,8 @@ class LegalRAGSystem:
 
         # Initialize LLM for generation
         self.llm = ChatVertexAI(
-            temperature=0,
-            model_name="gemini-2.5-flash",
+            temperature=0, 
+            model_name="gemini-2.5-flash-lite", 
             max_tokens=1024
         )
 

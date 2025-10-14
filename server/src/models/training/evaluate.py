@@ -26,7 +26,11 @@ import logging
 from data_loader import LegalDocumentDataset
 from train import RoleClassifierTrainer
 import sys
-sys.path.append('../')
+import os
+# Fix import paths
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 from role_classifier import RhetoricalRole
 
 # Setup logging
