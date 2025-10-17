@@ -47,15 +47,27 @@ Query → Embed → Find relevant clusters → Search within clusters → Genera
 
 ### ✅ BOTH systems use:
 
-1. **Embeddings**: `text-embedding-005` (768 dimensions)
+1. **Embeddings for RAG**: `text-embedding-005` (768 dimensions) - **stored in Pinecone**
 2. **Vector Database**: Pinecone for storage
 3. **Similarity Search**: Cosine similarity
 4. **Metadata Storage**: Text + role/cluster information
 5. **LLM Generation**: Gemini for answer generation
 
+### 🔑 Key Distinction:
+
+**Traditional RAG:**
+- InLegalBERT → Classifies roles (embeddings NOT stored, only role labels in metadata)
+- text-embedding-005 → Generates vectors for Pinecone (embeddings STORED)
+
+**Clustering RAG:**
+- Clustering model (Sentence-Transformers or InLegalBERT) → Discovers clusters (embeddings NOT stored, only cluster labels in metadata)
+- text-embedding-005 → Generates vectors for Pinecone (embeddings STORED)
+
+**In both cases**: Only text-embedding-005 embeddings go into Pinecone. Classification/clustering happens separately, only labels stored as metadata.
+
 ### 🆕 Clustering RAG adds:
 
-1. **Cluster Centroids**: Average embeddings per cluster (stored separately)
+1. **Cluster Centroids**: Average embeddings per cluster (stored separately in memory)
 2. **Hierarchical Search**: First find relevant clusters, then search within them
 3. **Cluster Metadata**: Each vector has `cluster_id`, `discovered_role`, `cluster_confidence`
 4. **Dynamic Clustering**: Can re-cluster as more data arrives
@@ -74,27 +86,35 @@ stats = rag.process_and_index_documents(documents)
 
 # Behind the scenes:
 # 1. Extract sentences
-# 2. Cluster using K-Means/DBSCAN/etc.
-# 3. Map clusters to roles using keywords
-# 4. Generate embeddings for RAG
-# 5. Store in Pinecone with cluster metadata
+# 2. Generate clustering features (InLegalBERT or Sentence-Transformers)
+#    → These embeddings are used for clustering ONLY, not stored
+# 3. Cluster using K-Means/DBSCAN/etc. → Get cluster labels
+# 4. Map clusters to roles using keywords
+# 5. Generate RAG embeddings with text-embedding-005
+#    → These embeddings ARE stored in Pinecone
+# 6. Store in Pinecone with cluster metadata
 ```
 
 **What goes into Pinecone?**
 ```json
 {
   "id": "doc_0_sent_5_a3b2c1",
-  "values": [0.123, -0.456, ...],  // 768-dim embedding
+  "values": [0.123, -0.456, ...],  // ← text-embedding-005 (768-dim) - STORED
   "metadata": {
     "text": "The petitioner filed a writ petition...",
-    "cluster_id": 3,
-    "discovered_role": "Facts",
-    "cluster_confidence": 0.87,
+    "cluster_id": 3,  // ← From clustering (InLegalBERT/Sentence-Transformers)
+    "discovered_role": "Facts",  // ← Mapped from cluster
+    "cluster_confidence": 0.87,  // ← Distance to cluster centroid
     "sentence_index": 5,
     "document_index": 0
   }
 }
 ```
+
+**Important**: 
+- **Stored vector** = text-embedding-005 embedding (for semantic search)
+- **Metadata** = Cluster information (for filtering/organization)
+- Clustering embeddings are ephemeral (not stored)
 
 ### Step 2: Querying (Runtime)
 
@@ -350,10 +370,13 @@ print(f"Clustering: {clustering_result['answer']}")
 ## Common Questions
 
 ### Q: Do I need two embedding models?
-**A:** No! Both use `text-embedding-005` for RAG. Clustering uses a separate model (`all-MiniLM-L6-v2`) only for clustering, not for storage.
+**A:** Technically yes, but they serve different purposes:
+- **InLegalBERT** (or Sentence-Transformers): Used for role classification/clustering - embeddings NOT stored
+- **text-embedding-005**: Used for RAG semantic search - embeddings STORED in Pinecone
+- Only text-embedding-005 embeddings are actually stored in the vector database
 
-### Q: Can I use my trained classifier with clustering?
-**A:** Yes! You can use supervised classifier predictions as cluster initialization (semi-supervised approach).
+### Q: Can I use my trained InLegalBERT classifier with clustering?
+**A:** Yes! You can use supervised classifier predictions as cluster initialization (semi-supervised approach), or use InLegalBERT embeddings as clustering features instead of Sentence-Transformers.
 
 ### Q: Is clustering slower?
 **A:** Indexing is slightly slower (clustering overhead), but querying is faster for large datasets due to cluster pruning.
