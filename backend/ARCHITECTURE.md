@@ -55,10 +55,10 @@ graph LR
     UserInput[User Input] --> IntentDetector{Intent Detector}
     
     IntentDetector -->|Has file attachment| Upload[UPLOAD_AND_CLASSIFY]
-    IntentDetector -->|"similar", "like", "related"| Similar[SIMILARITY_SEARCH]
-    IntentDetector -->|"predict", "outcome", "chances"| Predict[PREDICT_OUTCOME]
-    IntentDetector -->|"what", "explain", "tell me"| QA[QUESTION_ANSWERING]
-    IntentDetector -->|"facts", "reasoning", "decision"| RoleQA[ROLE_SPECIFIC_QA]
+    IntentDetector -->|Keywords: similar, like, related| Similar[SIMILARITY_SEARCH]
+    IntentDetector -->|Keywords: predict, outcome, chances| Predict[PREDICT_OUTCOME]
+    IntentDetector -->|Keywords: what, explain, tell me| QA[QUESTION_ANSWERING]
+    IntentDetector -->|Keywords: facts, reasoning, decision| RoleQA[ROLE_SPECIFIC_QA]
     
     Upload --> ClassificationAgent
     Similar --> SimilarityAgent
@@ -364,9 +364,9 @@ graph TB
         
         History[Conversation History:<br/>1. User uploaded case<br/>2. Asked about facts<br/>3. Asked about decision]
         
-        CaseMetadata[Case Metadata:<br/>- case_id: case_12345<br/>- roles: {Facts: 23, Issue: 5}<br/>- uploaded_at: timestamp]
+        CaseMetadata[Case Metadata:<br/>- case_id: case_12345<br/>- roles: Facts 23, Issue 5<br/>- uploaded_at: timestamp]
         
-        SimilarCases[Similar Cases Cache:<br/>- case_789 (89% similar)<br/>- case_456 (85% similar)]
+        SimilarCases[Similar Cases Cache:<br/>- case_789 - 89% similar<br/>- case_456 - 85% similar]
         
         PredictionCache[Prediction Results:<br/>- outcome: Favorable<br/>- confidence: 73%]
     end
