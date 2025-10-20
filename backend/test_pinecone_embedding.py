@@ -20,6 +20,7 @@ PREREQUISITES:
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
@@ -175,14 +176,37 @@ def create_embeddings_and_upsert(model, index):
     upsert_response = index.upsert(vectors=vectors)
     print(f"✅ Upserted {upsert_response.upserted_count} vectors successfully!")
     
+    # CRITICAL: Wait for serverless index to sync
+    print("\n⏳ Waiting for Pinecone index to sync (this can take 10-30 seconds for serverless)...")
+    time.sleep(5)  # Initial wait
+    
+    # Check index stats with retry
+    max_retries = 6
+    for attempt in range(max_retries):
+        stats = index.describe_index_stats()
+        if stats.total_vector_count > 0:
+            print(f"✅ Index synced! Total vectors: {stats.total_vector_count}")
+            break
+        else:
+            if attempt < max_retries - 1:
+                print(f"   ⏳ Attempt {attempt + 1}/{max_retries}: Still syncing... (waiting 5s)")
+                time.sleep(5)
+            else:
+                print(f"   ⚠️  Index still showing 0 vectors after {max_retries * 5}s. Continuing anyway...")
+    
     return vectors
 
 
 def test_query(model, index):
     """Test querying the index with a sample question."""
-    print("\n🔍 Testing query: 'What are the main facts of this case?'")
+    print("\n" + "=" * 80)
+    print("🔍 TESTING QUERIES")
+    print("=" * 80)
     
+    # Query 1: Facts
+    print("\n📋 Query 1: 'What are the main facts of this case?'")
     query_text = "What are the main facts of this case?"
+    
     # Use "Retrieval-query" prompt for query embeddings in RAG
     query_embedding = model.encode(
         query_text,
@@ -191,21 +215,27 @@ def test_query(model, index):
     )
     
     # Query with role filter for Facts
-    results = index.query(
-        vector=query_embedding.tolist(),
-        top_k=3,
-        include_metadata=True,
-        filter={"role": {"$eq": "Facts"}}
-    )
+    try:
+        results = index.query(
+            vector=query_embedding.tolist(),
+            top_k=3,
+            include_metadata=True,
+            filter={"role": {"$eq": "Facts"}}
+        )
+        
+        print(f"\n📊 Retrieved {len(results['matches'])} results (filtered by role='Facts'):")
+        if results['matches']:
+            for i, match in enumerate(results['matches'], 1):
+                print(f"\n{i}. Score: {match['score']:.4f}")
+                print(f"   Role: {match['metadata']['role']}")
+                print(f"   Text: {match['metadata']['text'][:100]}...")
+        else:
+            print("   ⚠️  No matches found. Index might still be syncing.")
+    except Exception as e:
+        print(f"   ❌ Error querying: {e}")
     
-    print(f"\n📊 Top {len(results['matches'])} results (filtered by role='Facts'):")
-    for i, match in enumerate(results['matches'], 1):
-        print(f"\n{i}. Score: {match['score']:.4f}")
-        print(f"   Role: {match['metadata']['role']}")
-        print(f"   Text: {match['metadata']['text'][:100]}...")
-    
-    # Query for reasoning
-    print("\n🔍 Testing query: 'What was the court's reasoning?'")
+    # Query 2: Reasoning
+    print("\n� Query 2: 'What was the court's reasoning?'")
     query_text = "What was the court's reasoning?"
     query_embedding = model.encode(
         query_text,
@@ -213,18 +243,52 @@ def test_query(model, index):
         normalize_embeddings=True
     )
     
-    results = index.query(
-        vector=query_embedding.tolist(),
-        top_k=2,
-        include_metadata=True,
-        filter={"role": {"$eq": "Reasoning"}}
+    try:
+        results = index.query(
+            vector=query_embedding.tolist(),
+            top_k=2,
+            include_metadata=True,
+            filter={"role": {"$eq": "Reasoning"}}
+        )
+        
+        print(f"\n📊 Retrieved {len(results['matches'])} results (filtered by role='Reasoning'):")
+        if results['matches']:
+            for i, match in enumerate(results['matches'], 1):
+                print(f"\n{i}. Score: {match['score']:.4f}")
+                print(f"   Role: {match['metadata']['role']}")
+                print(f"   Text: {match['metadata']['text'][:150]}...")
+        else:
+            print("   ⚠️  No matches found. Index might still be syncing.")
+    except Exception as e:
+        print(f"   ❌ Error querying: {e}")
+    
+    # Query 3: No filter (get all)
+    print("\n📋 Query 3: 'What is this case about?' (no role filter)")
+    query_text = "What is this case about?"
+    query_embedding = model.encode(
+        query_text,
+        prompt_name="Retrieval-query",
+        normalize_embeddings=True
     )
     
-    print(f"\n📊 Top {len(results['matches'])} results (filtered by role='Reasoning'):")
-    for i, match in enumerate(results['matches'], 1):
-        print(f"\n{i}. Score: {match['score']:.4f}")
-        print(f"   Role: {match['metadata']['role']}")
-        print(f"   Text: {match['metadata']['text'][:150]}...")
+    try:
+        results = index.query(
+            vector=query_embedding.tolist(),
+            top_k=3,
+            include_metadata=True
+            # No filter - retrieve all roles
+        )
+        
+        print(f"\n📊 Retrieved {len(results['matches'])} results (all roles):")
+        if results['matches']:
+            for i, match in enumerate(results['matches'], 1):
+                print(f"\n{i}. Score: {match['score']:.4f}")
+                print(f"   Role: {match['metadata']['role']}")
+                print(f"   Text: {match['metadata']['text'][:100]}...")
+        else:
+            print("   ⚠️  No matches found. Index might still be syncing.")
+    except Exception as e:
+        print(f"   ❌ Error querying: {e}")
 
 
 def main():
@@ -247,17 +311,31 @@ def main():
     
     # Step 5: Display stats
     print("\n" + "=" * 80)
-    print("📈 INDEX STATISTICS:")
+    print("📈 FINAL INDEX STATISTICS:")
     stats = index.describe_index_stats()
     print(f"   Total vectors: {stats.total_vector_count}")
     print(f"   Index dimension: {stats.dimension}")
     print("=" * 80)
     
-    print("\n✅ Sample data successfully added to Pinecone!")
+    if stats.total_vector_count == 0:
+        print("\n⚠️  WARNING: Index still shows 0 vectors!")
+        print("   This is common with Pinecone serverless indexes immediately after creation.")
+        print("\n   Troubleshooting:")
+        print("   1. Wait 1-2 minutes and run this script again")
+        print("   2. Check Pinecone console: https://app.pinecone.io/")
+        print("   3. The data IS uploaded, it just needs time to index")
+        print("\n   Run this to check later:")
+        print("   python -c \"from pinecone import Pinecone; import os; from dotenv import load_dotenv;\"")
+        print("   python -c \"load_dotenv(); pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'));\"")
+        print("   python -c \"print(pc.Index('nyaya-legal-rag').describe_index_stats())\"")
+    else:
+        print("\n✅ Sample data successfully added to Pinecone!")
+    
     print("\n💡 Next steps:")
-    print("   - View data in Pinecone console")
+    print("   - View data in Pinecone console: https://app.pinecone.io/")
     print("   - Integrate with FastAPI endpoints")
     print("   - Implement role-aware RAG queries")
+    print("   - Add InLegalBERT for automatic role classification")
 
 
 if __name__ == "__main__":
