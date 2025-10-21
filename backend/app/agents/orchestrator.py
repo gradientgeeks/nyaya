@@ -61,9 +61,11 @@ class MultiAgentOrchestrator:
             max_output_tokens=1024
         )
         
+        # Initialize checkpointer BEFORE building graph
+        self.checkpointer = MemorySaver()  # In-memory checkpointing
+        
         # Build graph
         self.graph = self._build_graph()
-        self.checkpointer = MemorySaver()  # In-memory checkpointing
         
         logger.info("✅ MultiAgentOrchestrator initialized")
     

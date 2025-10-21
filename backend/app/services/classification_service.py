@@ -33,6 +33,7 @@ class ClassificationService:
         self.model = None
         self.tokenizer = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model_available = False
         
         # Role mapping (must match training labels)
         self.id2label = {
@@ -46,7 +47,19 @@ class ClassificationService:
         }
         self.label2id = {v: k for k, v in self.id2label.items()}
         
-        self._load_model()
+        # Try to load model, but don't fail if it's not available
+        try:
+            self._load_model()
+            self.model_available = True
+        except FileNotFoundError:
+            logger.warning(
+                "⚠️  Classification model not available. "
+                "Document upload with classification will be disabled. "
+                "Regular queries will work normally."
+            )
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load classification model: {e}")
+            logger.info("Application will continue without classification capabilities.")
     
     def _load_model(self):
         """
@@ -100,16 +113,20 @@ class ClassificationService:
             )
             
         except FileNotFoundError:
-            logger.error(
-                f"❌ Model file not found: {self.settings.classifier_model_path}\n"
+            logger.warning(
+                f"⚠️  Model file not found: {self.settings.classifier_model_path}\n"
                 f"💡 Tip: Train the model first using the notebooks in docs/\n"
                 f"   or provide a pre-trained model.pt file"
             )
             raise
         
         except Exception as e:
-            logger.error(f"❌ Failed to load classification model: {e}")
+            logger.warning(f"⚠️  Failed to load classification model: {e}")
             raise
+    
+    def is_available(self) -> bool:
+        """Check if the classification model is loaded and available."""
+        return self.model_available and self.model is not None
     
     def classify_sentence(
         self,
@@ -125,7 +142,16 @@ class ClassificationService:
         
         Returns:
             ClassificationResult with predicted role and confidence
+        
+        Raises:
+            RuntimeError: If model is not available
         """
+        if not self.is_available():
+            raise RuntimeError(
+                "Classification model is not available. "
+                "Please train the model first or provide a pre-trained model."
+            )
+        
         if not sentence.strip():
             return ClassificationResult(
                 role=RhetoricalRole.NONE,
@@ -183,7 +209,16 @@ class ClassificationService:
         
         Returns:
             List of ClassificationResult objects
+        
+        Raises:
+            RuntimeError: If model is not available
         """
+        if not self.is_available():
+            raise RuntimeError(
+                "Classification model is not available. "
+                "Please train the model first or provide a pre-trained model."
+            )
+        
         if not sentences:
             return []
         
