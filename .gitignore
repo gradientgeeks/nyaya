@@ -3,5 +3,18 @@ server/Hier_BiLSTM_CRF-20250827T113256Z-1-001/
 dataset
 server/dataset
 
-# Sapling metadata
-.sl/
+# Environment variables (contains secrets)
+.env
+backend/.env
+server/.env
+*/.env
+
+# Python virtual environment
+.venv
+venv/
+backend/.venv
+backend/venv/
+
+# Hugging Face cache
+.cache/
+backend/.cache/

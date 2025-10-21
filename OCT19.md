@@ -299,8 +299,3 @@ for i, (sentence, embedding, label) in enumerate(zip(sentences, rag_embeddings, 
 
 This document captures the **complete architecture, flow, and best practices** for your legal RAG system.
 
----
-
-If you want, I can also create a **visual diagram** of this pipeline with arrows showing **classification vectors vs RAG vectors** and **UI flow** for documentation purposes.
-
-Do you want me to create that diagram?
