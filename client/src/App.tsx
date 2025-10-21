@@ -13,6 +13,7 @@ import {
 } from './components';
 import { mockCases } from './data/mockData';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { api, APIError } from './services';
 
 function AppContent() {
   const [documents, setDocuments] = useState<LegalDocument[]>([
@@ -24,7 +25,32 @@ function AppContent() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [sessionId, setSessionId] = useState<string>('');
+  const [backendAvailable, setBackendAvailable] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize session on mount
+  useEffect(() => {
+    const initializeSession = async () => {
+      try {
+        // Check backend health
+        await api.healthCheck();
+        setBackendAvailable(true);
+        
+        // Create session
+        const sessionResponse = await api.createSession();
+        setSessionId(sessionResponse.session_id);
+        console.log('✅ Session created:', sessionResponse.session_id);
+      } catch (error) {
+        console.warn('⚠️ Backend not available, using mock data:', error);
+        setBackendAvailable(false);
+        // Generate a fallback session ID for consistency
+        setSessionId(`mock-session-${Date.now()}`);
+      }
+    };
+
+    initializeSession();
+  }, []);
 
   useEffect(() => {
     // Set initial greeting message when active document changes
@@ -44,8 +70,8 @@ function AppContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (input.trim() === '' || isLoading || !activeDocument) return;
+  const handleSendMessage = async () => {
+    if (input.trim() === '' || isLoading || !activeDocument || !sessionId) return;
 
     const userMessage: ChatMessageType = { 
       id: `user-${Date.now()}`,
@@ -55,108 +81,243 @@ function AppContent() {
     };
     
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
-    // Simulate API call and agent response
-    setTimeout(() => {
-      const docData = mockCases[activeDocument.name];
-      let botResponse: ChatMessageType;
+    try {
+      if (backendAvailable) {
+        // Use real backend
+        const response = await api.query({
+          query: currentInput,
+          session_id: sessionId,
+          case_id: activeDocument.case_id,
+        });
 
-      const lowerInput = input.toLowerCase();
+        let botResponse: ChatMessageType;
 
-      if (lowerInput.includes("summary")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: docData.summary,
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("fact")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { facts: docData.summary.facts },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("petitioner") || lowerInput.includes("aop")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { petitionerArgs: docData.summary.petitionerArgs },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("respondent") || lowerInput.includes("aor")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { respondentArgs: docData.summary.respondentArgs },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("reasoning")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { reasoning: docData.summary.reasoning },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("decision")) {
-        botResponse = { 
-          id: `bot-${Date.now()}`,
-          sender: 'bot', 
-          type: 'analysis', 
-          data: { decision: docData.summary.decision },
-          timestamp: new Date()
-        };
-      } else if (lowerInput.includes("predict") || lowerInput.includes("outcome")) {
-        if (docData.type === 'pending' && docData.prediction) {
-          botResponse = { 
+        // Handle different response types
+        if (response.classification_result) {
+          // Classification result
+          botResponse = {
             id: `bot-${Date.now()}`,
-            sender: 'bot', 
-            type: 'prediction', 
-            data: docData.prediction,
+            sender: 'bot',
+            type: 'analysis',
+            text: response.answer,
+            data: response.classification_result,
+            timestamp: new Date()
+          };
+        } else if (response.prediction) {
+          // Prediction result
+          botResponse = {
+            id: `bot-${Date.now()}`,
+            sender: 'bot',
+            type: 'prediction',
+            text: response.answer,
+            data: response.prediction,
+            timestamp: new Date()
+          };
+        } else if (response.rag_response) {
+          // RAG response
+          botResponse = {
+            id: `bot-${Date.now()}`,
+            sender: 'bot',
+            type: 'text',
+            text: response.answer,
+            data: response.rag_response,
             timestamp: new Date()
           };
         } else {
-          botResponse = { 
+          // General response
+          botResponse = {
             id: `bot-${Date.now()}`,
-            sender: 'bot', 
-            type: 'text', 
-            text: "This case has already been judged. I can provide the final decision and reasoning.",
+            sender: 'bot',
+            type: 'text',
+            text: response.answer,
             timestamp: new Date()
           };
         }
+
+        setMessages(prev => [...prev, botResponse]);
+      } else {
+        // Fallback to mock data
+        await handleMockResponse(currentInput);
+      }
+    } catch (error) {
+      console.error('❌ Query error:', error);
+      
+      let errorMessage = 'Sorry, I encountered an error processing your request.';
+      if (error instanceof APIError) {
+        errorMessage = `Error: ${error.message}`;
+      }
+
+      const errorResponse: ChatMessageType = {
+        id: `bot-${Date.now()}`,
+        sender: 'bot',
+        type: 'error',
+        text: errorMessage,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMockResponse = async (input: string) => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const docData = mockCases[activeDocument!.name];
+    let botResponse: ChatMessageType;
+
+    const lowerInput = input.toLowerCase();
+
+    if (lowerInput.includes("summary")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: docData.summary,
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("fact")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: { facts: docData.summary.facts },
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("petitioner") || lowerInput.includes("aop")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: { petitionerArgs: docData.summary.petitionerArgs },
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("respondent") || lowerInput.includes("aor")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: { respondentArgs: docData.summary.respondentArgs },
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("reasoning")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: { reasoning: docData.summary.reasoning },
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("decision")) {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'analysis', 
+        data: { decision: docData.summary.decision },
+        timestamp: new Date()
+      };
+    } else if (lowerInput.includes("predict") || lowerInput.includes("outcome")) {
+      if (docData.type === 'pending' && docData.prediction) {
+        botResponse = { 
+          id: `bot-${Date.now()}`,
+          sender: 'bot', 
+          type: 'prediction', 
+          data: docData.prediction,
+          timestamp: new Date()
+        };
       } else {
         botResponse = { 
           id: `bot-${Date.now()}`,
           sender: 'bot', 
           type: 'text', 
-          text: "I'm not sure how to respond to that. You can ask me to summarize the case, show specific parts like 'facts' or 'arguments', or 'predict the outcome' for pending cases.",
+          text: "This case has already been judged. I can provide the final decision and reasoning.",
           timestamp: new Date()
         };
       }
-      
-      setMessages(prev => [...prev, botResponse]);
-      setIsLoading(false);
-    }, 1500);
+    } else {
+      botResponse = { 
+        id: `bot-${Date.now()}`,
+        sender: 'bot', 
+        type: 'text', 
+        text: "I'm not sure how to respond to that. You can ask me to summarize the case, show specific parts like 'facts' or 'arguments', or 'predict the outcome' for pending cases.",
+        timestamp: new Date()
+      };
+    }
+    
+    setMessages(prev => [...prev, botResponse]);
   };
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = async (file: File) => {
+    if (!sessionId) {
+      console.error('No session ID available');
+      return;
+    }
+
     const newDoc: LegalDocument = { 
       id: documents.length + 1, 
       name: file.name,
       uploadDate: new Date(),
       size: file.size
     };
-    setDocuments(prev => [...prev, newDoc]);
-    setActiveDocument(newDoc);
-    // Add a mock entry for the new file
-    (mockCases as any)[file.name] = mockCases["Case_C_vs_D_Pending.pdf"]; // Use a default mock
+
+    setIsLoading(true);
+    
+    try {
+      if (backendAvailable) {
+        // Upload to backend
+        const response = await api.uploadDocument(file, sessionId);
+        
+        // Update document with case_id from backend
+        if (response.classification_result) {
+          newDoc.case_id = response.classification_result.case_id;
+        }
+
+        // Add upload success message
+        const uploadMessage: ChatMessageType = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          type: 'analysis',
+          text: response.answer || `Document "${file.name}" uploaded and analyzed successfully!`,
+          data: response.classification_result,
+          timestamp: new Date()
+        };
+
+        setDocuments(prev => [...prev, newDoc]);
+        setActiveDocument(newDoc);
+        setMessages([uploadMessage]);
+      } else {
+        // Fallback to mock
+        setDocuments(prev => [...prev, newDoc]);
+        setActiveDocument(newDoc);
+        // Add a mock entry for the new file
+        (mockCases as any)[file.name] = mockCases["Case_C_vs_D_Pending.pdf"];
+      }
+    } catch (error) {
+      console.error('❌ Upload error:', error);
+      
+      let errorMessage = 'Failed to upload document.';
+      if (error instanceof APIError) {
+        errorMessage = `Upload error: ${error.message}`;
+      }
+
+      const errorResponse: ChatMessageType = {
+        id: `bot-${Date.now()}`,
+        sender: 'bot',
+        type: 'error',
+        text: errorMessage,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDocumentSelect = (document: LegalDocument) => {
@@ -169,6 +330,13 @@ function AppContent() {
 
   return (
     <div className="font-sans bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex h-screen overflow-hidden">
+      {/* Backend status indicator */}
+      {!backendAvailable && (
+        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center py-2 text-sm z-50">
+          ⚠️ Backend not connected - using mock data
+        </div>
+      )}
+
       {/* Mobile Backdrop */}
       {!isSidebarMinimized && (
         <div 

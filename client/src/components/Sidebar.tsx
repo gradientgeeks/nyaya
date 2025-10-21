@@ -1,7 +1,7 @@
 import React from 'react';
 import { FileText, ChevronsRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LegalDocument } from '../types';
-import { ThemeToggle } from './ThemeToggle';
+// import { ThemeToggle } from './ThemeToggle'; // Currently not used in sidebar
 
 interface SidebarProps {
   documents: LegalDocument[];
