@@ -8,7 +8,7 @@ This is the core of Nyaya's role-aware RAG system.
 import logging
 from typing import Dict, Any, List, Optional
 from langchain_google_vertexai import ChatVertexAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from ..models.schemas import AgentState, RhetoricalRole, RAGResponse
 from ..services.embedding_service import EmbeddingService
 from ..services.pinecone_service import PineconeService
@@ -78,7 +78,7 @@ async def rag_agent_node(
             target_roles = [
                 RhetoricalRole.FACTS,
                 RhetoricalRole.ISSUE,
-                RhetoricalRole.ARGUMENT_PETITIONER,
+                RhetoricalRole.ARGUMENTS_PETITIONER,
                 RhetoricalRole.ARGUMENT_RESPONDENT,
                 RhetoricalRole.REASONING,
                 RhetoricalRole.DECISION
