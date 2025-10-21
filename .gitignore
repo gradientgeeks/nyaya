@@ -18,3 +18,36 @@ backend/venv/
 # Hugging Face cache
 .cache/
 backend/.cache/
+/backend/pinecone_data_insert/
+# PyTorch Lightning checkpoints
+*.ckpt
+backend/app/models/checkpoints/
+# Logs
+logs/
+*.log
+backend/logs/
+# VSCode settings
+.vscode/
+backend/.vscode/
+server/.vscode/
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+backend/app/notebooks/.ipynb_checkpoints
+server/notebooks/.ipynb_checkpoints
+# MacOS files
+.DS_Store
+# PyCharm files
+.idea/
+# Coverage reports
+htmlcov/
+.coverage
+# Mypy cache
+.mypy_cache/
+# Pyre type checker cache
+.pyre/
+# Celery beat schedule file
+# pycache/
+celerybeat-schedule
+
+__pycache__/
+**/__pycache__/
