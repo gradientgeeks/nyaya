@@ -166,7 +166,7 @@ def create_embeddings_batch(model, sentences: List[Dict]) -> List:
 
 def upload_to_pinecone(index, model, all_sentences: List[Dict]):
     """
-    Upload all sentences to Pinecone in batches.
+    Upload all sentences to Pinecone in batches with proper namespace and metadata.
 
     Args:
         index: Pinecone index
@@ -194,12 +194,16 @@ def upload_to_pinecone(index, model, all_sentences: List[Dict]):
         for i, (sentence, embedding) in enumerate(zip(batch, embeddings)):
             vector_id = f"{sentence['file']}_sent_{sentence['line_num']}"
 
+            # Metadata following ARCHITECTURE.md schema (line 411-426)
             metadata = {
-                "text": sentence["text"][:1000],  # Pinecone metadata limit
-                "role": sentence["role"],
+                "text": sentence["text"][:1000],  # Pinecone metadata limit (~40KB)
+                "role": sentence["role"],  # One of 7 roles
                 "case_id": sentence["file"],
                 "sentence_index": sentence["line_num"],
-                "user_uploaded": False,  # Training data
+                "user_uploaded": False,  # Training data (not user upload)
+                "confidence": 1.0,  # Assumed high confidence for training data
+                "court": "Indian Courts",  # Generic (we don't have this info)
+                "category": "Legal Training Data",  # Generic category
             }
 
             vectors.append({
@@ -208,10 +212,13 @@ def upload_to_pinecone(index, model, all_sentences: List[Dict]):
                 "metadata": metadata
             })
 
-        # Upsert to Pinecone
-        print(f"   ⬆️  Upserting {len(vectors)} vectors...")
+        # Upsert to Pinecone with namespace for training data
+        print(f"   ⬆️  Upserting {len(vectors)} vectors to 'training_data' namespace...")
         try:
-            upsert_response = index.upsert(vectors=vectors)
+            upsert_response = index.upsert(
+                vectors=vectors,
+                namespace="training_data"  # Separate from user uploads
+            )
             uploaded_count += upsert_response.upserted_count
             print(f"   ✅ Upserted {upsert_response.upserted_count} vectors (Total: {uploaded_count:,})")
         except Exception as e:
@@ -330,8 +337,13 @@ def main():
     max_retries = 6
     for attempt in range(max_retries):
         stats = index.describe_index_stats()
-        if stats.total_vector_count > 0:
-            print(f"✅ Index synced! Total vectors in index: {stats.total_vector_count:,}")
+
+        # Check namespace-specific count
+        training_data_count = stats.namespaces.get('training_data', {}).get('vector_count', 0)
+
+        if training_data_count > 0:
+            print(f"✅ Index synced! Vectors in 'training_data' namespace: {training_data_count:,}")
+            print(f"   Total vectors across all namespaces: {stats.total_vector_count:,}")
             break
         else:
             if attempt < max_retries - 1:
@@ -370,7 +382,8 @@ def main():
             vector=query_embedding.tolist(),
             top_k=3,
             include_metadata=True,
-            filter={"role": {"$eq": "Facts"}}
+            filter={"role": {"$eq": "Facts"}},
+            namespace="training_data"  # Query from training_data namespace
         )
 
         print(f"\n📊 Retrieved {len(results['matches'])} results (filtered by role='Facts'):")
