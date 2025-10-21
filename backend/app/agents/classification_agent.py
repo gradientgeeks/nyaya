@@ -53,6 +53,13 @@ async def classification_agent_node(
         if not file_path or not case_id:
             raise ValueError("file_path and case_id required for classification")
         
+        # Check if classifier is available
+        if not classifier.is_available():
+            raise RuntimeError(
+                "Classification model is not available. "
+                "Please train the model first. See docs/REMOTE_GPU_TRAINING_GUIDE.md"
+            )
+        
         # Step 1: Extract text
         logger.info(f"📄 Extracting text from: {file_path}")
         
