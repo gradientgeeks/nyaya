@@ -4,6 +4,7 @@ export interface LegalDocument {
   type?: 'judged' | 'pending';
   uploadDate?: Date;
   size?: number;
+  case_id?: string;
 }
 
 export interface CaseSummary {
@@ -35,8 +36,8 @@ export interface ChatMessage {
   id?: string;
   sender: 'user' | 'bot';
   text?: string;
-  type?: 'greeting' | 'text' | 'analysis' | 'prediction';
-  data?: CaseSummary | CasePrediction;
+  type?: 'greeting' | 'text' | 'analysis' | 'prediction' | 'error';
+  data?: CaseSummary | CasePrediction | ClassificationResult | any;
   timestamp?: Date;
 }
 
@@ -63,4 +64,19 @@ export interface LoadingState {
   isLoading: boolean;
   operation?: 'upload' | 'analysis' | 'prediction' | 'chat';
   message?: string;
+}
+
+// Backend-specific types
+export interface ClassificationResult {
+  case_id: string;
+  total_sentences: number;
+  role_distribution: Record<string, number>;
+  sentences: Array<{
+    text: string;
+    role: string;
+    confidence: number;
+    sentence_index: number;
+  }>;
+  processing_time: number;
+  timestamp: string;
 }
