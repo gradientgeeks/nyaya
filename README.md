@@ -1,5 +1,40 @@
 # Intelligent Agent for Legal Document Analysis using RAG & Role Classifier
 
+**Nyaya** (Sanskrit: न्याय, "justice") - A role-aware legal document analysis system.
+
+---
+
+## Quick Start
+
+### One-Command Launch
+
+```bash
+./start.sh
+```
+
+This starts both backend (port 8000) and frontend (port 5173).
+
+### Manual Setup
+
+**Backend:**
+```bash
+cd backend
+cp .env.example .env  # Add your API keys
+uvicorn app.main:app --reload
+```
+
+**Frontend:**
+```bash
+cd client
+npm install
+npm run dev
+```
+
+**Full Documentation:**
+- [Integration Guide](INTEGRATION_GUIDE.md) - Complete setup instructions
+- [Backend README](backend/README.md) - API documentation
+- [Frontend README](client/README.md) - UI documentation
+
 ---
 
 ## 1. Introduction
@@ -33,20 +68,35 @@ This project develops an **intelligent agent system** that integrates:
 
 1. **Frontend (Client Layer)**
 
-   * Chat interface (React/Angular).
-   * Functions: document upload, structured summaries, multi-turn queries.
+   * **React 19 + Vite** chat interface with dark mode
+   * **Features:**
+     * Document upload (PDF/TXT)
+     * Real-time chat with role-aware Q&A
+     * Visual analysis of document structure
+     * Case outcome prediction
+     * Graceful fallback to mock data when backend unavailable
+   * **Location:** `client/` directory
+   * **Port:** 5173 (development)
 
 2. **Backend API (Application Layer)**
 
-   * Framework: FastAPI / Django.
-   * Modules:
+   * **FastAPI** production-ready REST API
+   * **Features:**
+     * LangGraph multi-agent orchestration
+     * Role-aware RAG with Vertex AI Gemini
+     * Session management for conversations
+     * Document classification with InLegalBERT
+     * Vector storage with Pinecone
+   * **Location:** `backend/` directory
+   * **Port:** 8000
+   * **Modules:**
 
-     * **Document Processor** – Cleans & segments uploaded judgments.
-     * **Role Classifier** – Labels sentences by rhetorical role.
-     * **RAG Engine** – Retrieves role-aware segments.
-     * **Conversation Manager** – Maintains context across turns.
-     * **Agent Orchestrator** – Routes queries to tools (retrievers, predictor).
-     * **Prediction Module** – Provides outcome probabilities for pending cases.
+     * **Document Processor** – Cleans & segments uploaded judgments
+     * **Role Classifier** – Labels sentences by rhetorical role
+     * **RAG Engine** – Retrieves role-aware segments
+     * **Conversation Manager** – Maintains context across turns
+     * **Agent Orchestrator** – Routes queries to tools (retrievers, predictor)
+     * **Prediction Module** – Provides outcome probabilities for pending cases
 
 3. **Data Layer**
 
