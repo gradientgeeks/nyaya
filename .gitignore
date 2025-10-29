@@ -51,3 +51,4 @@ celerybeat-schedule
 
 __pycache__/
 **/__pycache__/
+dataset.zip
