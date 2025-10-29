@@ -14,7 +14,7 @@ server/.env
 venv/
 backend/.venv
 backend/venv/
-
+inlegalbert_classifier/
 # Hugging Face cache
 .cache/
 backend/.cache/
